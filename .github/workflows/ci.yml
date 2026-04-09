@@ -151,6 +151,13 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      - name: Upload build folder for debugging
+        uses: actions/upload-artifact@v4
+        with:
+          name: gtkwave-windows-x86-64-build
+          path: build/
+          retention-days: 14
+
       - name: Run the tests
         shell: msys2 {0}
         run: |
