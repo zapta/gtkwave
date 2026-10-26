@@ -46,6 +46,9 @@ jobs:
             mingw-w64-ucrt-x86_64-pkgconf
             mingw-w64-ucrt-x86_64-glib2
             mingw-w64-ucrt-x86_64-gobject-introspection
+            mingw-w64-ucrt-x86_64-adwaita-icon-theme
+            mingw-w64-ucrt-x86_64-hicolor-icon-theme
+            mingw-w64-ucrt-x86_64-librsvg
             mingw-w64-ucrt-x86_64-gperf
             mingw-w64-ucrt-x86_64-meson
             mingw-w64-ucrt-x86_64-ninja
@@ -82,6 +85,33 @@ jobs:
         run: |
           tree /tmp/gtkwave
 
+      # GTK loads these files at runtime, so ldd doesn't find them.
+      - name: Add GTK runtime data
+        shell: msys2 {0}
+        run: |
+          set -x
+
+          BUNDLE="/tmp/gtkwave"
+
+          # GSettings schemas. Without them the file dialog crashes.
+          mkdir -p "$BUNDLE/share/glib-2.0"
+          cp -r "$MINGW_PREFIX/share/glib-2.0/schemas" "$BUNDLE/share/glib-2.0/"
+
+          # Adwaita icon theme, for the icons GTK uses (e.g. check-symbolic.svg).
+          mkdir -p "$BUNDLE/share/icons"
+          cp -r "$MINGW_PREFIX/share/icons/Adwaita" "$BUNDLE/share/icons/"
+
+          # hicolor theme index, so GTK finds the GTKWave app icon.
+          cp "$MINGW_PREFIX/share/icons/hicolor/index.theme" "$BUNDLE/share/icons/hicolor/"
+          gtk-update-icon-cache -f -t "$BUNDLE/share/icons/hicolor"
+
+          # gdk-pixbuf image loaders, needed to load SVG icons.
+          PIXBUF_DIR="lib/gdk-pixbuf-2.0/2.10.0"
+          mkdir -p "$BUNDLE/$PIXBUF_DIR"
+          cp -r "$MINGW_PREFIX/$PIXBUF_DIR/loaders" "$BUNDLE/$PIXBUF_DIR/"
+          cp "$MINGW_PREFIX/$PIXBUF_DIR/loaders.cache" "$BUNDLE/$PIXBUF_DIR/"
+          cat "$BUNDLE/$PIXBUF_DIR/loaders.cache"
+
       - name: Add UCRT64 DLLs
         shell: msys2 {0}
         run: |
@@ -93,8 +123,9 @@ jobs:
           BIN_DIR="/tmp/gtkwave/bin"
           LIB_DIR="/tmp/gtkwave/lib"
 
-          # Collect raw dependency information from the *.exe files.
-          for exe in "$BIN_DIR"/*.exe; do
+          # Collect raw dependency information from the *.exe files and
+          # the gdk-pixbuf loaders (the SVG loader needs the librsvg DLLs).
+          for exe in "$BIN_DIR"/*.exe "$LIB_DIR"/gdk-pixbuf-2.0/2.10.0/loaders/*.dll; do
             ldd "$exe" >> /tmp/dll_list1.txt
           done
 
