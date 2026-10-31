@@ -131,6 +131,9 @@ struct _GwTimeDisplay
     GtkWidget *cursor_value;
 };
 
+/* The width of the time values in characters, as set in gw-time-display.ui. */
+#define DEFAULT_VALUE_CHARS 17
+
 G_DEFINE_TYPE(GwTimeDisplay, gw_time_display, GTK_TYPE_BOX)
 
 enum
@@ -140,6 +143,30 @@ enum
 };
 
 static GParamSpec *properties[N_PROPERTIES];
+
+/* The values may be narrower than DEFAULT_VALUE_CHARS (see
+ * gw_time_display_update). Ask for the default width as natural width, so they
+ * grow back to it when there is room. Uses the same character width as
+ * GtkLabel's width-chars. */
+static void gw_time_display_get_preferred_width(GtkWidget *widget, gint *minimum, gint *natural)
+{
+    GwTimeDisplay *self = GW_TIME_DISPLAY(widget);
+
+    GTK_WIDGET_CLASS(gw_time_display_parent_class)->get_preferred_width(widget, minimum, natural);
+
+    PangoContext *context = gtk_widget_get_pango_context(self->marker_value);
+    PangoFontMetrics *metrics =
+        pango_context_get_metrics(context,
+                                  pango_context_get_font_description(context),
+                                  pango_context_get_language(context));
+    gint char_width = MAX(pango_font_metrics_get_approximate_char_width(metrics),
+                          pango_font_metrics_get_approximate_digit_width(metrics));
+    pango_font_metrics_unref(metrics);
+
+    gint value_chars = gtk_label_get_width_chars(GTK_LABEL(self->marker_value));
+    gint extra_chars = 2 * (DEFAULT_VALUE_CHARS - value_chars);
+    *natural = MAX(*natural, *minimum + PANGO_PIXELS_CEIL(extra_chars * char_width));
+}
 
 static void gw_time_display_update(GwTimeDisplay *self)
 {
@@ -161,6 +188,25 @@ static void gw_time_display_update(GwTimeDisplay *self)
     GwTime global_time_offset = gw_dump_file_get_global_time_offset(GLOBALS->dump_file);
     GwTimeDimension time_dimension = gw_dump_file_get_time_dimension(GLOBALS->dump_file);
     GwTimeRange *time_range = gw_dump_file_get_time_range(GLOBALS->dump_file);
+
+    /* Make the values only as wide as the longest time in this file, plus "B+"
+     * for a baseline delta. Scaled and frequency values can be longer, so they
+     * keep the default width. */
+    gint value_chars = DEFAULT_VALUE_CHARS;
+    if (!GLOBALS->scale_to_time_dimension && !GLOBALS->use_frequency_delta) {
+        gchar *start = reformat_time_2(gw_time_range_get_start(time_range) + global_time_offset,
+                                       time_dimension,
+                                       FALSE);
+        gchar *end = reformat_time_2(gw_time_range_get_end(time_range) + global_time_offset,
+                                     time_dimension,
+                                     FALSE);
+        value_chars = MAX(g_utf8_strlen(start, -1), g_utf8_strlen(end, -1)) + 2;
+        value_chars = MIN(value_chars, DEFAULT_VALUE_CHARS);
+        g_free(start);
+        g_free(end);
+    }
+    gtk_label_set_width_chars(GTK_LABEL(self->marker_value), value_chars);
+    gtk_label_set_width_chars(GTK_LABEL(self->cursor_value), value_chars);
 
     if (GLOBALS->use_maxtime_display) {
         gchar *text = reformat_time_2(gw_time_range_get_end(time_range) + global_time_offset,
@@ -288,6 +334,8 @@ static void gw_time_display_class_init(GwTimeDisplayClass *klass)
     object_class->dispose = gw_time_display_dispose;
     object_class->set_property = gw_time_display_set_property;
     object_class->get_property = gw_time_display_get_property;
+
+    widget_class->get_preferred_width = gw_time_display_get_preferred_width;
 
     properties[PROP_PROJECT] = g_param_spec_object("project",
                                                    "Project",

@@ -457,7 +457,8 @@ static GtkWidget *toolbar_append_button(GtkWidget *toolbar,
                                         gpointer user_data)
 {
     GtkWidget *icon_widget = gtk_image_new_from_icon_name(stock_id, GTK_ICON_SIZE_BUTTON);
-    GtkToolItem *button = gtk_tool_button_new(icon_widget, NULL);
+    /* The label is hidden in the toolbar but names the item in the overflow menu. */
+    GtkToolItem *button = gtk_tool_button_new(icon_widget, tooltip_text);
     gtk_tool_item_set_tooltip_text(button, tooltip_text);
 
     g_signal_connect(button, "clicked", G_CALLBACK(callback), user_data);
@@ -477,19 +478,39 @@ static GtkToolItem *toolbar_append_separator(GtkWidget *toolbar)
     return separator;
 }
 
-static void toolbar_append_widget(GtkWidget *toolbar, GtkWidget *widget)
+/* GtkBox would widen the From/To entries and the time display before the
+ * toolbar, hiding buttons to make room. Instead, give the toolbar room for all
+ * its buttons first, and only then let the fields grow up to their natural
+ * width. Any space left goes to the toolbar. */
+static void top_bar_size_allocate(GtkWidget *box, GtkAllocation *allocation, gpointer fields)
 {
-    GtkToolItem *item = gtk_tool_item_new();
-    gtk_container_add(GTK_CONTAINER(item), widget);
+    GList *children = gtk_container_get_children(GTK_CONTAINER(box));
+    GtkWidget *toolbar = children->data;
+    g_list_free(children);
 
-    gtk_toolbar_insert(GTK_TOOLBAR(toolbar), item, -1);
+    gint toolbar_min, toolbar_nat, fields_min, fields_nat;
+    gtk_widget_get_preferred_width(toolbar, &toolbar_min, &toolbar_nat);
+    gtk_widget_get_preferred_width(fields, &fields_min, &fields_nat);
+
+    gint spacing = gtk_box_get_spacing(GTK_BOX(box));
+    gint available = allocation->width - spacing;
+    gint fields_width = CLAMP(available - toolbar_nat, fields_min, fields_nat);
+
+    GtkAllocation child = *allocation;
+    child.width = available - fields_width;
+    gtk_widget_size_allocate(toolbar, &child);
+
+    child.x += child.width + spacing;
+    child.width = fields_width;
+    gtk_widget_size_allocate(fields, &child);
 }
 
 static GtkWidget *build_toolbar(void)
 {
     GtkWidget *toolbar = gtk_toolbar_new();
     gtk_toolbar_set_style(GTK_TOOLBAR(toolbar), GTK_TOOLBAR_ICONS);
-    gtk_toolbar_set_show_arrow(GTK_TOOLBAR(toolbar), FALSE);
+    /* Items that don't fit go to an overflow menu, so the window can shrink. */
+    gtk_toolbar_set_show_arrow(GTK_TOOLBAR(toolbar), TRUE);
 
     toolbar_append_button(toolbar, "edit-cut", "Cut Traces", G_CALLBACK(menu_cut_traces), NULL);
     toolbar_append_button(toolbar, "edit-copy", "Copy Traces", G_CALLBACK(menu_copy_traces), NULL);
@@ -525,10 +546,6 @@ static GtkWidget *build_toolbar(void)
                           G_CALLBACK(service_right_edge),
                           NULL);
 
-    toolbar_append_separator(toolbar);
-
-    toolbar_append_widget(toolbar, create_entry_box());
-
     GtkToolItem *last_separator = toolbar_append_separator(toolbar);
 
     if ((GLOBALS->loaded_file_type != DUMPLESS_FILE) && (!GLOBALS->disable_menus)) {
@@ -546,11 +563,22 @@ static GtkWidget *build_toolbar(void)
 
     GLOBALS->time_box = gw_time_display_new();
     gw_time_display_set_project(GW_TIME_DISPLAY(GLOBALS->time_box), GLOBALS->project);
-    toolbar_append_widget(toolbar, GLOBALS->time_box);
 
-    gtk_widget_show_all(toolbar);
+    /* The From/To entries and the time display sit next to the toolbar, not
+     * in it, so they stay visible and only buttons overflow. */
+    GtkWidget *fields = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
+    gtk_widget_set_valign(fields, GTK_ALIGN_CENTER);
+    gtk_box_pack_start(GTK_BOX(fields), create_entry_box(), FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(fields), GLOBALS->time_box, FALSE, FALSE, 0);
 
-    return toolbar;
+    GtkWidget *box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
+    gtk_box_pack_start(GTK_BOX(box), toolbar, TRUE, TRUE, 0);
+    gtk_box_pack_start(GTK_BOX(box), fields, FALSE, FALSE, 0);
+    g_signal_connect_after(box, "size-allocate", G_CALLBACK(top_bar_size_allocate), fields);
+
+    gtk_widget_show_all(box);
+
+    return box;
 }
 
 static void add_custom_css(void)

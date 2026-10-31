@@ -148,7 +148,7 @@ GtkWidget *create_entry_box(void)
     gtk_box_pack_start(GTK_BOX(box), label, TRUE, TRUE, 0);
     gtk_widget_show(label);
     gtk_box_pack_start(GTK_BOX(box), GLOBALS->from_entry, TRUE, TRUE, 0);
-    gtk_widget_set_size_request(GTK_WIDGET(GLOBALS->from_entry), 90, 22);
+    gtk_widget_set_size_request(GTK_WIDGET(GLOBALS->from_entry), -1, 22);
     gtk_tooltips_set_tip_2(GLOBALS->from_entry, "Scroll Lower Bound (use MX for named marker X)");
     gtk_widget_show(GLOBALS->from_entry);
 
@@ -172,9 +172,18 @@ GtkWidget *create_entry_box(void)
     gtk_box_pack_start(GTK_BOX(box2), label2, TRUE, TRUE, 0);
     gtk_widget_show(label2);
     gtk_box_pack_start(GTK_BOX(box2), GLOBALS->to_entry, TRUE, TRUE, 0);
-    gtk_widget_set_size_request(GTK_WIDGET(GLOBALS->to_entry), 90, 22);
+    gtk_widget_set_size_request(GTK_WIDGET(GLOBALS->to_entry), -1, 22);
     gtk_tooltips_set_tip_2(GLOBALS->to_entry, "Scroll Upper Bound (use MX for named marker X)");
     gtk_widget_show(GLOBALS->to_entry);
+
+    /* Fit at least the longer of the two times, and grow up to about the
+     * original width when there is room. */
+    gint entry_chars = (gint)MAX(MAX(strlen(fromstr), strlen(tostr)) + 1, 6);
+    gint entry_max_chars = MAX(entry_chars, 19);
+    gtk_entry_set_width_chars(GTK_ENTRY(GLOBALS->from_entry), entry_chars);
+    gtk_entry_set_width_chars(GTK_ENTRY(GLOBALS->to_entry), entry_chars);
+    gtk_entry_set_max_width_chars(GTK_ENTRY(GLOBALS->from_entry), entry_max_chars);
+    gtk_entry_set_max_width_chars(GTK_ENTRY(GLOBALS->to_entry), entry_max_chars);
 
     mainbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
 

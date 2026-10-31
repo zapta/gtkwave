@@ -25,6 +25,9 @@
                     <class name="value" />
                 </style>
             </object>
+            <packing>
+                <property name="expand">True</property>
+            </packing>
         </child>
         <child>
             <object class="GtkLabel">
@@ -54,6 +57,9 @@
                     <class name="value" />
                 </style>
             </object>
+            <packing>
+                <property name="expand">True</property>
+            </packing>
         </child>
     </template>
 </interface>
